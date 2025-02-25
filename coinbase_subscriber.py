@@ -8,7 +8,7 @@ logging.basicConfig(
 )
 
 
-def main():
+def coinbase_subscriber():
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
     socket.connect("tcp://localhost:5556")  # Connect to ZeroMQ publisher
@@ -40,4 +40,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    coinbase_subscriber()
