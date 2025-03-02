@@ -129,9 +129,10 @@ class Streamer(abc.ABC):
     Child classes must implement subscribe, websocket_handler, and update_order_book.
     """
 
-    def __init__(self, ws_url, symbols, zmq_port):
+    def __init__(self, ws_url, symbols, topic_prefix, zmq_port):
         self.ws_url = ws_url
         self.symbols = symbols
+        self.topic_prefix = topic_prefix
         self.zmq_port = zmq_port
 
         # Set up ZeroMQ publisher.
@@ -190,8 +191,8 @@ class Streamer(abc.ABC):
             "timePublished": timePublished  # Timestamp after processing (UTC)
         }
         message = {
-            "topic": f"ORDERBOOK_{self.__class__.__name__.upper()}_{symbol}",
-            "data": {**published_data, "exchange": self.__class__.__name__.replace("Streamer", "").upper(),
+            "topic": f"{self.topic_prefix}_{symbol}",
+            "data": {**published_data, "exchange": self.topic_prefix.replace("ORDERBOOK_", "").upper(),
                      "symbol": symbol}
         }
         self.publisher_thread.publish(message)
@@ -299,7 +300,7 @@ class CoinbaseStreamer(Streamer):
       - Each update in event['updates'] has: side, price_level, new_quantity.
     """
 
-    def generate_jwt(self, message, channel, products=[]):
+    def generate_jwt(self, message, channel):
         timestamp = int(time.time())
         payload = {
             "iss": "coinbase-cloud",
@@ -323,7 +324,7 @@ class CoinbaseStreamer(Streamer):
             "channel": CHANNEL,
             "product_ids": self.symbols
         }
-        signed_message = self.generate_jwt(message, CHANNEL, self.symbols)
+        signed_message = self.generate_jwt(message, CHANNEL)
         ws.send(dumps(signed_message))
         logging.info("Coinbase: Sent subscription message for products %s on channel %s", self.symbols, CHANNEL)
 
@@ -659,13 +660,15 @@ if __name__ == "__main__":
     coinbase_streamer = CoinbaseStreamer(
         ws_url=CONFIG["exchanges"]["coinbase"]["ws_url"],
         symbols=["BTC-USD", "ETH-USD"],
-        zmq_port=5559  # Use a unique port
+        topic_prefix=CONFIG["exchanges"]["coinbase"]["topic_prefix"],
+        zmq_port=CONFIG["exchanges"]["coinbase"]["zmq_port"]
     )
 
     binance_streamer = BinanceStreamer(
         ws_url=CONFIG["exchanges"]["binance"]["ws_url"],
         symbols=["BTCUSDT", "ETHUSDT"],
-        zmq_port=5560  # Use a different port
+        topic_prefix=CONFIG["exchanges"]["binance"]["topic_prefix"],
+        zmq_port=CONFIG["exchanges"]["binance"]["zmq_port"]
     )
 
     # Start each streamer in non-blocking mode.

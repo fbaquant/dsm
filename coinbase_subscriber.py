@@ -4,6 +4,8 @@ import logging
 import time
 import threading
 
+from config import CONFIG
+
 # Constants for port and topic prefix.
 PORT = 5559
 TOPIC_PREFIX = "ORDERBOOK_COINBASE_"
@@ -12,15 +14,15 @@ TOPIC_PREFIX = "ORDERBOOK_COINBASE_"
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 class CoinbaseSubscriber:
-    def __init__(self, port=PORT, topic_prefix=TOPIC_PREFIX):
+    def __init__(self, topic_prefix, port):
         """
         Initialize the subscriber:
           - Connects to the specified port.
           - Subscribes to all messages.
           - Sets a reception timeout to periodically check the running flag.
         """
-        self.port = port
         self.topic_prefix = topic_prefix
+        self.port = port
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.SUB)
         self.socket.connect(f"tcp://localhost:{self.port}")
@@ -105,7 +107,10 @@ class CoinbaseSubscriber:
 
 
 if __name__ == "__main__":
-    subscriber = CoinbaseSubscriber()
+    subscriber = CoinbaseSubscriber(
+        topic_prefix=CONFIG["exchanges"]["coinbase"]["topic_prefix"],
+        zmq_port=CONFIG["exchanges"]["coinbase"]["zmq_port"]
+    )
     subscriber.start()
     # Let the subscriber run for 5 seconds (adjust as needed), then end.
     time.sleep(2)

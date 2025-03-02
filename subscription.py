@@ -4,6 +4,8 @@ import logging
 import time
 import threading
 
+from config import CONFIG
+
 # Constants for port and topic prefix.
 PORT = 5559
 EXCHANGE = "COINBASE"
@@ -13,24 +15,24 @@ TOPIC_PREFIX = f"ORDERBOOK_{EXCHANGE}"
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 class Subscriber:
-    def __init__(self, port=PORT, topic_prefix=TOPIC_PREFIX):
+    def __init__(self, topic_prefix, zmq_port):
         """
         Initialize the subscriber:
           - Connects to the specified port.
           - Subscribes to all messages.
           - Sets a reception timeout to periodically check the running flag.
         """
-        self.port = port
         self.topic_prefix = topic_prefix
+        self.zmq_port = zmq_port
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.SUB)
-        self.socket.connect(f"tcp://localhost:{self.port}")
+        self.socket.connect(f"tcp://localhost:{self.zmq_port}")
         self.socket.setsockopt_string(zmq.SUBSCRIBE, "")
         # Set a reception timeout (in milliseconds) so the loop can exit if no message arrives.
         self.socket.setsockopt(zmq.RCVTIMEO, 500)
         self.running = False
         self.thread = None
-        logging.info("Subscriber initialized and connected to tcp://localhost:%s", self.port)
+        logging.info("Subscriber initialized and connected to tcp://localhost:%s", self.zmq_port)
 
     def _subscribe_loop(self):
         """
@@ -106,7 +108,10 @@ class Subscriber:
 
 
 if __name__ == "__main__":
-    subscriber = Subscriber()
+    subscriber = Subscriber(
+        topic_prefix=CONFIG["exchanges"]["coinbase"]["topic_prefix"],
+        zmq_port=CONFIG["exchanges"]["coinbase"]["zmq_port"]
+    )
     subscriber.start()
     # Let the subscriber run for 5 seconds (adjust as needed), then end.
     time.sleep(5)
