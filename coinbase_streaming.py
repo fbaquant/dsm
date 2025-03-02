@@ -93,7 +93,7 @@ class CoinbaseStreamer:
       - timeReceived: Time when the message was received (UTC, ISO 8601 with microseconds)
       - timePublished: Time when the order book was published (UTC, ISO 8601 with microseconds)
     """
-    def __init__(self, api_key, secret_key, ws_url, symbols, zmq_port=5556):
+    def __init__(self, api_key, secret_key, ws_url, symbols, topic_prefix, zmq_port):
         """
         Initialize the CoinbaseStreamer.
         Parameters:
@@ -116,6 +116,7 @@ class CoinbaseStreamer:
         self.secret_key = secret_key
         self.ws_url = ws_url
         self.symbols = symbols
+        self.topic_prefix = topic_prefix
         self.order_book = {symbol: OrderBook() for symbol in symbols}
         self.ws_thread = None   # Will hold the WebSocket thread reference
         self.ws_app = None      # Will hold the WebSocketApp instance
@@ -255,7 +256,7 @@ class CoinbaseStreamer:
             "timePublished": timePublished
         }
         message = {
-            "topic": f"ORDERBOOK_COINBASE_{symbol}",
+            "topic": f"{self.topic_prefix}_{symbol}",
             "data": {**published_data, "exchange": "COINBASE", "symbol": symbol}
         }
         self.publisher_thread.publish(message)
@@ -356,7 +357,8 @@ if __name__ == "__main__":
         secret_key=CONFIG["exchanges"]["coinbase"]["secret_key"],
         ws_url=CONFIG["exchanges"]["coinbase"]["ws_url"],
         symbols=symbols,
-        zmq_port=5559  # Ensure the publisher port is free.
+        topic_prefix=CONFIG["exchanges"]["coinbase"]["topic_prefix"],
+        zmq_port=CONFIG["exchanges"]["coinbase"]["zmq_port"]
     )
     # Start in non-blocking mode so the main thread can continue.
     streamer.start(block=False)
