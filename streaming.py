@@ -676,7 +676,7 @@ if __name__ == "__main__":
     binance_thread.start()
 
     # Let them run for a while (e.g., 60 seconds).
-    time.sleep(5)
+    time.sleep(60)
 
     # End both streamers.
     coinbase_streamer.end()
