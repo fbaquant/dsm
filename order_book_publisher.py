@@ -44,7 +44,7 @@ except ImportError:
     dumps = json_parser.dumps
     loads = json_parser.loads
 
-from config import CONFIG
+from config import EXCHANGE
 
 # Configure logging. Adjust the level (DEBUG for development, INFO for production).
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -306,13 +306,13 @@ class CoinbaseStreamer(Streamer):
             "iss": "coinbase-cloud",
             "nbf": timestamp,
             "exp": timestamp + 120,
-            "sub": CONFIG["exchanges"]["coinbase"]["api_key"],
+            "sub": EXCHANGE["coinbase"]["api_key"],
         }
         headers = {
-            "kid": CONFIG["exchanges"]["coinbase"]["api_key"],
+            "kid": EXCHANGE["coinbase"]["api_key"],
             "nonce": hashlib.sha256(os.urandom(16)).hexdigest()
         }
-        token = jwt.encode(payload, CONFIG["exchanges"]["coinbase"]["secret_key"], algorithm="ES256", headers=headers)
+        token = jwt.encode(payload, EXCHANGE["coinbase"]["secret_key"], algorithm="ES256", headers=headers)
         message["jwt"] = token
         logging.debug("Coinbase: JWT generated for channel %s", channel)
         return message
@@ -658,17 +658,17 @@ class BybitStreamer(Streamer):
 if __name__ == "__main__":
     # Instantiate each streamer with its own ZeroMQ port.
     coinbase_streamer = CoinbaseStreamer(
-        ws_url=CONFIG["exchanges"]["coinbase"]["ws_url"],
+        ws_url=EXCHANGE["coinbase"]["ws_url"],
         symbols=["BTC-USD", "ETH-USD"],
-        topic_prefix=CONFIG["exchanges"]["coinbase"]["topic_prefix"],
-        zmq_port=CONFIG["exchanges"]["coinbase"]["zmq_port"]
+        topic_prefix=EXCHANGE["coinbase"]["topic_prefix"],
+        zmq_port=EXCHANGE["coinbase"]["zmq_port"]
     )
 
     binance_streamer = BinanceStreamer(
-        ws_url=CONFIG["exchanges"]["binance"]["ws_url"],
+        ws_url=EXCHANGE["binance"]["ws_url"],
         symbols=["BTCUSDT", "ETHUSDT"],
-        topic_prefix=CONFIG["exchanges"]["binance"]["topic_prefix"],
-        zmq_port=CONFIG["exchanges"]["binance"]["zmq_port"]
+        topic_prefix=EXCHANGE["binance"]["topic_prefix"],
+        zmq_port=EXCHANGE["binance"]["zmq_port"]
     )
 
     # Start each streamer in non-blocking mode.

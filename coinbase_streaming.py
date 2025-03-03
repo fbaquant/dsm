@@ -22,7 +22,7 @@ except ImportError:
     dumps = json_parser.dumps
     loads = json_parser.loads
 
-from config import CONFIG
+from config import EXCHANGE
 
 # Configure logging: DEBUG level for development.
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -353,12 +353,12 @@ if __name__ == "__main__":
     # Example usage: subscribe to multiple symbols.
     symbols = ["BTC-USD", "ETH-USD"]
     streamer = CoinbaseStreamer(
-        api_key=CONFIG["exchanges"]["coinbase"]["api_key"],
-        secret_key=CONFIG["exchanges"]["coinbase"]["secret_key"],
-        ws_url=CONFIG["exchanges"]["coinbase"]["ws_url"],
+        api_key=EXCHANGE["coinbase"]["api_key"],
+        secret_key=EXCHANGE["coinbase"]["secret_key"],
+        ws_url=EXCHANGE["coinbase"]["ws_url"],
         symbols=symbols,
-        topic_prefix=CONFIG["exchanges"]["coinbase"]["topic_prefix"],
-        zmq_port=CONFIG["exchanges"]["coinbase"]["zmq_port"]
+        topic_prefix=EXCHANGE["coinbase"]["topic_prefix"],
+        zmq_port=EXCHANGE["coinbase"]["zmq_port"]
     )
     # Start in non-blocking mode so the main thread can continue.
     streamer.start(block=False)

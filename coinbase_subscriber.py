@@ -4,7 +4,7 @@ import logging
 import time
 import threading
 
-from config import CONFIG
+from config import EXCHANGE
 
 # Constants for port and topic prefix.
 PORT = 5559
@@ -108,8 +108,8 @@ class CoinbaseSubscriber:
 
 if __name__ == "__main__":
     subscriber = CoinbaseSubscriber(
-        topic_prefix=CONFIG["exchanges"]["coinbase"]["topic_prefix"],
-        zmq_port=CONFIG["exchanges"]["coinbase"]["zmq_port"]
+        topic_prefix=EXCHANGE["coinbase"]["topic_prefix"],
+        zmq_port=EXCHANGE["coinbase"]["zmq_port"]
     )
     subscriber.start()
     # Let the subscriber run for 5 seconds (adjust as needed), then end.
