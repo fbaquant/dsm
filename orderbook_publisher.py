@@ -17,6 +17,7 @@ a periodic logging thread that logs the current best bid/ask for each symbol.
 import abc
 import datetime
 import hashlib
+import hmac
 import logging
 import os
 import threading
@@ -122,13 +123,13 @@ class OrderBookPublisher(Publisher):
 
     def publish_order_book(self, symbol, timeExchange, timeReceived, timePublished):
         """
-        Package the current order book data along with timestamps and enqueue it for publishing.
+        Publish the Bybit order book update for a given symbol.
 
         Args:
             symbol (str): The symbol to publish.
-            timeExchange (str): Timestamp from the exchange.
-            timeReceived (str): Timestamp when the data was received.
-            timePublished (str): Timestamp after processing.
+            timeExchange (str): Exchange timestamp.
+            timeReceived (str): Received timestamp.
+            timePublished (str): Published timestamp.
         """
         order_book_instance = self.order_book[symbol]
         published_data = {
@@ -140,14 +141,10 @@ class OrderBookPublisher(Publisher):
         }
         message = {
             "topic": f"ORDERBOOK_{self.exchange}_{symbol}",
-            "data": {
-                **published_data,
-                "symbol": symbol,
-                "exchange": self.exchange
-            }
+            "data": {**published_data, "exchange": self.exchange, "symbol": symbol}
         }
         self.publisher_thread.publish(message)
-        logging.debug("%s: Enqueued order book update for symbol %s", self.__class__.__name__, symbol)
+        logging.debug("%s: Enqueued order book update for symbol %s", self.exchange, symbol)
 
     def logging_loop(self):
         """
@@ -181,9 +178,9 @@ class CoinbaseOrderBookPublisher(OrderBookPublisher):
     Order book publisher implementation for Coinbase.
 
     Expected incoming data structure for order book updates:
-      - Keys: 'channel', 'client_id', 'timestamp', 'sequence_num', 'events'
-      - Each event in 'events' contains keys: type, product_id, updates.
-      - Each update in event['updates'] has: side, price_level, new_quantity.
+        - Keys: 'channel', 'client_id', 'timestamp', 'sequence_num', 'events'
+        - Each event in 'events' contains keys: type, product_id, updates.
+        - Each update in event['updates'] has: side, price_level, new_quantity.
     """
 
     def generate_jwt(self, message, channel):
@@ -227,7 +224,8 @@ class CoinbaseOrderBookPublisher(OrderBookPublisher):
         }
         signed_message = self.generate_jwt(message, "level2")
         ws.send(dumps(signed_message))
-        logging.info("%s: Sent subscription message for products %s on channel %s", self.exchange, self.symbols, "level2")
+        logging.info("%s: Sent subscription message for products %s on channel %s", self.exchange, self.symbols,
+                     "level2")
 
     def websocket_handler(self, ws, message):
         """
@@ -303,13 +301,15 @@ class CoinbaseOrderBookPublisher(OrderBookPublisher):
                     try:
                         order_book_instance.update_order(float(price), float(quantity), "bid")
                     except Exception as e:
-                        logging.error("%s: Error updating bid at price %s for symbol %s: %s", self.exchange, price, symbol, e)
+                        logging.error("%s: Error updating bid at price %s for symbol %s: %s", self.exchange, price,
+                                      symbol, e)
             if "asks" in data:
                 for price, quantity in data["asks"]:
                     try:
                         order_book_instance.update_order(float(price), float(quantity), "ask")
                     except Exception as e:
-                        logging.error("%s: Error updating ask at price %s for symbol %s: %s", self.exchange, price, symbol, e)
+                        logging.error("%s: Error updating ask at price %s for symbol %s: %s", self.exchange, price,
+                                      symbol, e)
             timePublished = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
             self.publish_order_book(symbol, timeExchange, timeReceived, timePublished)
 
@@ -398,32 +398,6 @@ class BinanceOrderBookPublisher(OrderBookPublisher):
                     logging.error("%s: Error updating ask at price %s for %s: %s", self.exchange, price, symbol, e)
         timePublished = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
         self.publish_order_book(symbol, timeExchange, timeReceived, timePublished)
-
-    def publish_order_book(self, symbol, timeExchange, timeReceived, timePublished):
-        """
-        Publish the Binance order book update for a given symbol.
-        This method overrides the base _publish_order_book to include exchange-specific topic naming.
-
-        Args:
-            symbol (str): The symbol to publish.
-            timeExchange (str): Exchange timestamp.
-            timeReceived (str): Received timestamp.
-            timePublished (str): Published timestamp.
-        """
-        order_book_instance = self.order_book[symbol]
-        published_data = {
-            "bids": list(order_book_instance.bids.items()),
-            "asks": list(order_book_instance.asks.items()),
-            "timeExchange": timeExchange,
-            "timeReceived": timeReceived,
-            "timePublished": timePublished
-        }
-        message = {
-            "topic": f"ORDERBOOK_{self.exchange}_{symbol}",
-            "data": {**published_data, "exchange": self.exchange, "symbol": symbol}
-        }
-        self.publisher_thread.publish(message)
-        logging.debug("%s: Enqueued order book update for symbol %s", self.exchange, symbol)
 
 
 class OkxOrderBookPublisher(OrderBookPublisher):
@@ -515,47 +489,28 @@ class OkxOrderBookPublisher(OrderBookPublisher):
         timePublished = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
         self.publish_order_book(symbol, timeExchange, timeReceived, timePublished)
 
-    def publish_order_book(self, symbol, timeExchange, timeReceived, timePublished):
-        """
-        Publish the OKX order book update for a given symbol.
-
-        Args:
-            symbol (str): The symbol to publish.
-            timeExchange (str): Exchange timestamp.
-            timeReceived (str): Received timestamp.
-            timePublished (str): Published timestamp.
-        """
-        order_book_instance = self.order_book[symbol]
-        published_data = {
-            "bids": list(order_book_instance.bids.items()),
-            "asks": list(order_book_instance.asks.items()),
-            "timeExchange": timeExchange,
-            "timeReceived": timeReceived,
-            "timePublished": timePublished
-        }
-        message = {
-            "topic": f"ORDERBOOK_{self.exchange}_{symbol}",
-            "data": {**published_data, "exchange": self.exchange, "symbol": symbol}
-        }
-        self.publisher_thread.publish(message)
-        logging.debug("%s: Enqueued order book update for symbol %s", self.exchange, symbol)
-
 
 class BybitOrderBookPublisher(OrderBookPublisher):
     """
     Order book publisher implementation for Bybit.
 
-    Expected message format:
-      {
-         "topic": "orderBookL2_25.BTCUSD",
-         "data": [{
-             "price": "85700.00",
-             "side": "Buy",
-             "size": "0.5"
-         }],
-         "ts": 1648336797123
-      }
+    Expected incoming data structure for order book updates:
+        - Keys: 'topic', 'type', 'ts', 'data'
+        - Each data in 'data' contains keys: s (symbol), b (bids), a (ask), u, seq.
+        - Each update in event['updates'] has: side, price_level, new_quantity.
     """
+
+    def generate_signature(self, api_key: str, api_secret: str, expires: int) -> str:
+        """
+        Generate the HMAC SHA256 signature required for authentication.
+        For Bybit v5, the signature is typically computed on the concatenation
+        of the expiration timestamp and API key.
+        """
+        sign = str(hmac.new(
+            bytes(api_secret, "utf-8"),
+            bytes(f"GET/realtime{expires}", "utf-8"), digestmod="sha256"
+        ).hexdigest())
+        return sign
 
     def subscribe(self, ws):
         """
@@ -564,13 +519,30 @@ class BybitOrderBookPublisher(OrderBookPublisher):
         Args:
             ws (websocket.WebSocket): Active WebSocket connection.
         """
-        # Bybit requires symbols without dashes.
-        message = {
-            "op": "subscribe",
-            "args": [f"orderBookL2_25.{symbol.replace('-', '')}" for symbol in self.symbols]
+        expires = int((time.time() + 1) * 1000)
+        sign = self.generate_signature(self.api_key, self.secret_key, expires)
+
+        auth_payload = {
+            "op": "auth",
+            "args": [self.api_key, expires, sign]
         }
-        ws.send(dumps(message))
-        logging.info("%s: Sent subscription message: %s", self.exchange, message)
+
+        ws.send(dumps(auth_payload))
+        logging.info("%s: Sent authentication message: %s", self.exchange, auth_payload)
+
+        #auth_response = ws.recv()
+        #logging.info("%s: Authentication response: %s", self.exchange, auth_response)
+
+        # Subscribe to the order updates channel
+        subscribe_payload = {
+            "op": "subscribe",
+            "args": [f"orderbook.50.{symbol}" for symbol in self.symbols]
+        }
+        ws.send(dumps(subscribe_payload))
+        logging.info("%s: Sent subscription message: %s", self.exchange, subscribe_payload)
+
+        #subscribe_response = ws.recv()
+        #logging.info("%s: Subscription response: %s", self.exchange, subscribe_response)
 
     def websocket_handler(self, ws, message):
         """
@@ -602,6 +574,18 @@ class BybitOrderBookPublisher(OrderBookPublisher):
         if "data" not in data or not data["data"]:
             logging.debug("%s: No data in message; skipping", self.exchange)
             return
+
+        symbol = data.get("data", {}).get("s", "")
+        if not symbol or symbol not in self.order_book:
+            logging.debug("%s: Symbol %s not in subscription list; skipping", self.exchange, symbol)
+            return
+
+        order_book_instance = self.order_book[symbol]
+        if data.get("type", "") == "snapshot":
+            order_book_instance.bids.clear()
+            order_book_instance.asks.clear()
+            logging.debug("%s: Cleared order book for %s due to snapshot.", self.exchange, symbol)
+
         ts = data.get("ts")
         if ts:
             timeExchange = datetime.datetime.fromtimestamp(
@@ -609,57 +593,28 @@ class BybitOrderBookPublisher(OrderBookPublisher):
             ).isoformat(timespec='microseconds')
         else:
             timeExchange = "N/A"
-        # Extract symbol from topic (e.g., "orderBookL2_25.BTCUSD")
-        topic = data.get("topic", "")
-        parts = topic.split(".")
-        symbol = parts[1] if len(parts) > 1 else None
-        if not symbol or symbol not in self.order_book:
-            logging.debug("%s: Symbol %s not in subscription list; skipping", self.exchange, symbol)
-            return
-        order_book_instance = self.order_book[symbol]
-        for entry in data["data"]:
-            side = entry.get("side", "").lower()
-            # Map 'buy' to 'bid' and 'sell' to 'ask'
-            if side == "buy":
-                side = "bid"
-            elif side == "sell":
-                side = "ask"
-            price = entry.get("price")
-            quantity = entry.get("size")
-            if not (side and price is not None and quantity is not None):
-                logging.debug("%s: Skipping entry with insufficient data: %s", self.exchange, entry)
-                continue
+
+        bids = data["data"]["b"]
+        asks = data["data"]["a"]
+
+        for bid in bids:
+            price = bid[0]
+            quantity = bid[1]
             try:
-                order_book_instance.update_order(float(price), float(quantity), side)
+                order_book_instance.update_order(float(price), float(quantity), 'bid')
             except Exception as e:
                 logging.error("%s: Error updating order at price %s for symbol %s: %s", self.exchange, price, symbol, e)
+
+        for ask in asks:
+            price = ask[0]
+            quantity = ask[1]
+            try:
+                order_book_instance.update_order(float(price), float(quantity), 'ask')
+            except Exception as e:
+                logging.error("%s: Error updating order at price %s for symbol %s: %s", self.exchange, price, symbol, e)
+
         timePublished = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
         self.publish_order_book(symbol, timeExchange, timeReceived, timePublished)
-
-    def publish_order_book(self, symbol, timeExchange, timeReceived, timePublished):
-        """
-        Publish the Bybit order book update for a given symbol.
-
-        Args:
-            symbol (str): The symbol to publish.
-            timeExchange (str): Exchange timestamp.
-            timeReceived (str): Received timestamp.
-            timePublished (str): Published timestamp.
-        """
-        order_book_instance = self.order_book[symbol]
-        published_data = {
-            "bids": list(order_book_instance.bids.items()),
-            "asks": list(order_book_instance.asks.items()),
-            "timeExchange": timeExchange,
-            "timeReceived": timeReceived,
-            "timePublished": timePublished
-        }
-        message = {
-            "topic": f"ORDERBOOK_{self.exchange}_{symbol}",
-            "data": {**published_data, "exchange": self.exchange, "symbol": symbol}
-        }
-        self.publisher_thread.publish(message)
-        logging.debug("%s: Enqueued order book update for symbol %s", self.exchange, symbol)
 
 
 # =============================================================================
@@ -667,7 +622,7 @@ class BybitOrderBookPublisher(OrderBookPublisher):
 # =============================================================================
 if __name__ == "__main__":
     # Instantiate streamers with their respective configurations and ZeroMQ ports.
-    coinbase_streamer = CoinbaseOrderBookPublisher(
+    coinbase_orderbook_publisher = CoinbaseOrderBookPublisher(
         ws_url=EXCHANGE_CONFIG["coinbase"]["ws_url"],
         api_key=EXCHANGE_CONFIG["coinbase"]["api_key"],
         secret_key=EXCHANGE_CONFIG["coinbase"]["secret_key"],
@@ -676,7 +631,7 @@ if __name__ == "__main__":
         zmq_port=EXCHANGE_CONFIG["coinbase"]["orderbook_port"]
     )
 
-    binance_streamer = BinanceOrderBookPublisher(
+    binance_orderbook_publisher = BinanceOrderBookPublisher(
         ws_url=EXCHANGE_CONFIG["binance"]["ws_url"],
         symbols=["BTCUSDT", "ETHUSDT"],
         api_key=EXCHANGE_CONFIG["binance"]["api_key"],
@@ -685,20 +640,33 @@ if __name__ == "__main__":
         zmq_port=EXCHANGE_CONFIG["binance"]["orderbook_port"]
     )
 
-    # Start each streamer in non-blocking mode using separate threads.
-    coinbase_thread = threading.Thread(target=coinbase_streamer.start, kwargs={'block': False})
-    binance_thread = threading.Thread(target=binance_streamer.start, kwargs={'block': False})
+    bybit_orderbook_publisher = BybitOrderBookPublisher(
+        ws_url=EXCHANGE_CONFIG["bybit"]["ws_url"],
+        symbols=["BTCUSDT", "ETHUSDT"],
+        api_key=EXCHANGE_CONFIG["bybit"]["api_key"],
+        secret_key=EXCHANGE_CONFIG["bybit"]["secret_key"],
+        exchange=EXCHANGE_CONFIG["bybit"]["exchange"],
+        zmq_port=EXCHANGE_CONFIG["bybit"]["orderbook_port"]
+    )
 
-    coinbase_thread.start()
-    binance_thread.start()
+    # Start each streamer in non-blocking mode using separate threads.
+    # coinbase_thread = threading.Thread(target=coinbase_orderbook_publisher.start, kwargs={'block': False})
+    # binance_thread = threading.Thread(target=binance_orderbook_publisher.start, kwargs={'block': False})
+    bybit_thread = threading.Thread(target=bybit_orderbook_publisher.start, kwargs={'block': False})
+
+    # coinbase_thread.start()
+    # binance_thread.start()
+    bybit_thread.start()
 
     # Let the streamers run for a specified period (e.g., 60 seconds).
     time.sleep(120)
 
     # Cleanly stop both streamers.
-    coinbase_streamer.end()
-    binance_streamer.end()
+    # coinbase_orderbook_publisher.end()
+    # binance_orderbook_publisher.end()
+    bybit_orderbook_publisher.end()
 
     # Optionally join the threads to ensure a clean shutdown.
-    coinbase_thread.join()
-    binance_thread.join()
+    # coinbase_thread.join()
+    # binance_thread.join()
+    bybit_thread.join()
