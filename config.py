@@ -33,6 +33,7 @@ EXCHANGE_CONFIG = {
     },
     "bybit": {
         "ws_url": "wss://stream.bybit.com/v5/public/spot",  # Bybit latest WebSocket
+        #"ws_url": "wss://stream.bybit.com/v5/private",  # Bybit latest WebSocket
         "api_key": "EP46MrOENoWuV8QmvF",
         "secret_key": "vPOe01QSmRMMNIy28pIDUevemhHxbr8IBpld",
         "exchange": "BYBIT",

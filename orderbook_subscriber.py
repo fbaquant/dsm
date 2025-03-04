@@ -104,10 +104,12 @@ class Subscriber:
 
 
 if __name__ == "__main__":
+    exchange = "bybit"
     subscriber = Subscriber(
-        exchange=EXCHANGE_CONFIG["coinbase"]["exchange"],
-        zmq_port=EXCHANGE_CONFIG["coinbase"]["orderbook_port"]
+        exchange=EXCHANGE_CONFIG[exchange]["exchange"],
+        zmq_port=EXCHANGE_CONFIG[exchange]["orderbook_port"]
     )
+
     subscriber.start()
     # Let the subscriber run for 5 seconds (adjust as needed), then end.
     time.sleep(5)
