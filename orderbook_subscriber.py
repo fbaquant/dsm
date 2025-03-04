@@ -4,20 +4,20 @@ import logging
 import time
 import threading
 
-from config import EXCHANGE
+from config import EXCHANGE_CONFIG
 
 # Configure logging to DEBUG for detailed output.
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 class Subscriber:
-    def __init__(self, topic_prefix, zmq_port):
+    def __init__(self, exchange, zmq_port):
         """
         Initialize the subscriber:
           - Connects to the specified port.
           - Subscribes to all messages.
           - Sets a reception timeout to periodically check the running flag.
         """
-        self.topic_prefix = topic_prefix
+        self.exchange = exchange
         self.zmq_port = zmq_port
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.SUB)
@@ -29,7 +29,7 @@ class Subscriber:
         self.thread = None
         logging.info("Subscriber initialized and connected to tcp://localhost:%s", self.zmq_port)
 
-    def _subscribe_loop(self):
+    def subscribe_loop(self):
         """
         Main loop for receiving and processing messages.
         Runs in a dedicated thread.
@@ -43,7 +43,8 @@ class Subscriber:
                 data = message.get("data", {})
 
                 # Process only messages with topics starting with our prefix.
-                if not topic.startswith(self.topic_prefix):
+                print(topic)
+                if not topic.startswith(f"ORDERBOOK_{self.exchange}"):
                     logging.debug("Ignoring message with topic: %s", topic)
                     continue
 
@@ -80,7 +81,7 @@ class Subscriber:
         Start the subscription in a separate thread and log the start.
         """
         self.running = True
-        self.thread = threading.Thread(target=self._subscribe_loop)
+        self.thread = threading.Thread(target=self.subscribe_loop)
         self.thread.daemon = True
         self.thread.start()
         logging.info("Subscription started.")
@@ -104,8 +105,8 @@ class Subscriber:
 
 if __name__ == "__main__":
     subscriber = Subscriber(
-        topic_prefix=EXCHANGE["coinbase"]["topic_prefix"],
-        zmq_port=EXCHANGE["coinbase"]["zmq_port"]
+        exchange=EXCHANGE_CONFIG["coinbase"]["exchange"],
+        zmq_port=EXCHANGE_CONFIG["coinbase"]["orderbook_port"]
     )
     subscriber.start()
     # Let the subscriber run for 5 seconds (adjust as needed), then end.
