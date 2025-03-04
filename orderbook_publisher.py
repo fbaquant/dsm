@@ -420,7 +420,7 @@ class BinanceOrderBookPublisher(OrderBookPublisher):
         }
         message = {
             "topic": f"ORDERBOOK_{self.exchange}_{symbol}",
-            "data": {**published_data, "exchange": "BINANCE", "symbol": symbol}
+            "data": {**published_data, "exchange": self.exchange, "symbol": symbol}
         }
         self.publisher_thread.publish(message)
         logging.debug("%s: Enqueued order book update for symbol %s", self.exchange, symbol)
