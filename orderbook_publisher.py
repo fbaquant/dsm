@@ -26,7 +26,7 @@ import time
 import jwt
 from sortedcontainers import SortedDict  # Maintain order book in sorted order
 
-from core.publisher import Publisher  # Base publisher for ZeroMQ publishing
+from core.udp_publisher import Publisher  # Base publisher for ZeroMQ publishing
 
 # Try to use orjson for faster JSON processing. Fallback to standard json if unavailable.
 try:
@@ -660,27 +660,27 @@ if __name__ == "__main__":
     )
 
     # Start each streamer in non-blocking mode using separate threads.
-    # coinbase_thread = threading.Thread(target=coinbase_orderbook_publisher.start, kwargs={'block': False})
+    coinbase_thread = threading.Thread(target=coinbase_orderbook_publisher.start, kwargs={'block': False})
     # binance_thread = threading.Thread(target=binance_orderbook_publisher.start, kwargs={'block': False})
     # bybit_thread = threading.Thread(target=bybit_orderbook_publisher.start, kwargs={'block': False})
-    okx_thread = threading.Thread(target=okx_orderbook_publisher.start, kwargs={'block': False})
+    # okx_thread = threading.Thread(target=okx_orderbook_publisher.start, kwargs={'block': False})
 
-    # coinbase_thread.start()
+    coinbase_thread.start()
     # binance_thread.start()
     # bybit_thread.start()
-    okx_thread.start()
+    # okx_thread.start()
 
     # Let the streamers run for a specified period (e.g., 60 seconds).
     time.sleep(120)
 
     # Cleanly stop both streamers.
-    # coinbase_orderbook_publisher.end()
+    coinbase_orderbook_publisher.end()
     # binance_orderbook_publisher.end()
     # bybit_orderbook_publisher.end()
-    okx_orderbook_publisher.end()
+    # okx_orderbook_publisher.end()
 
     # Optionally join the threads to ensure a clean shutdown.
-    # coinbase_thread.join()
+    coinbase_thread.join()
     # binance_thread.join()
     # okx_thread.join()
-    okx_thread.join()
+    # okx_thread.join()
