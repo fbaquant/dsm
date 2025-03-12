@@ -484,6 +484,7 @@ class OkxOrderBookPublisher(OrderBookPublisher):
         if "asks" in data_item:
             for ask in data_item["asks"]:
                 try:
+                    price, quantity = ask[:2]  # Use only the first 2 vals
                     order_book_instance.update_order(float(price), float(quantity), "ask")
                 except Exception as e:
                     logging.error("%s: Error updating ask at price %s for %s: %s", self.exchange, price, symbol, e)
@@ -660,27 +661,27 @@ if __name__ == "__main__":
     )
 
     # Start each streamer in non-blocking mode using separate threads.
-    coinbase_thread = threading.Thread(target=coinbase_orderbook_publisher.start, kwargs={'block': False})
+    # coinbase_thread = threading.Thread(target=coinbase_orderbook_publisher.start, kwargs={'block': False})
     # binance_thread = threading.Thread(target=binance_orderbook_publisher.start, kwargs={'block': False})
-    # bybit_thread = threading.Thread(target=bybit_orderbook_publisher.start, kwargs={'block': False})
+    bybit_thread = threading.Thread(target=bybit_orderbook_publisher.start, kwargs={'block': False})
     # okx_thread = threading.Thread(target=okx_orderbook_publisher.start, kwargs={'block': False})
 
-    coinbase_thread.start()
+    # coinbase_thread.start()
     # binance_thread.start()
-    # bybit_thread.start()
+    bybit_thread.start()
     # okx_thread.start()
 
     # Let the streamers run for a specified period (e.g., 60 seconds).
-    time.sleep(120)
+    time.sleep(240)
 
     # Cleanly stop both streamers.
-    coinbase_orderbook_publisher.end()
+    # coinbase_orderbook_publisher.end()
     # binance_orderbook_publisher.end()
-    # bybit_orderbook_publisher.end()
+    bybit_orderbook_publisher.end()
     # okx_orderbook_publisher.end()
 
     # Optionally join the threads to ensure a clean shutdown.
-    coinbase_thread.join()
+    # coinbase_thread.join()
     # binance_thread.join()
-    # okx_thread.join()
+    bybit_thread.join()
     # okx_thread.join()
