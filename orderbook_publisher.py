@@ -24,6 +24,7 @@ import threading
 import time
 
 import jwt
+import pandas as pd
 from sortedcontainers import SortedDict  # Maintain order book in sorted order
 
 from core.udp_publisher import Publisher  # Base publisher for ZeroMQ publishing
@@ -88,7 +89,7 @@ class OrderBookPublisher(Publisher):
     Inherits from a base Publisher class that manages ZeroMQ publishing.
     """
 
-    def __init__(self, ws_url, api_key, secret_key, symbols, exchange, zmq_port):
+    def __init__(self, ws_url, api_key, secret_key, symbols, exchange, zmq_port, save_mode=True):
         """
         Initialize the OrderBookPublisher.
 
@@ -99,11 +100,24 @@ class OrderBookPublisher(Publisher):
             symbols (list): List of symbols to subscribe to.
             exchange (str): Prefix for ZeroMQ topics.
             zmq_port (int): Port number for ZeroMQ publisher.
+            save_mode (bool): If True, saves order book data to parquet every 15 minutes.
         """
         super().__init__(ws_url, api_key, secret_key, symbols, exchange, zmq_port)
 
         # Create an order book instance for each symbol.
         self.order_book = {symbol: OrderBook() for symbol in symbols}
+
+        self.save_mode = save_mode
+        self.last_save_time = datetime.datetime.now(datetime.timezone.utc)
+        self.data_buffer = {symbol: [] for symbol in symbols}  # Buffer for each symbol
+
+        # Define save directory
+        self.save_dir = os.path.join(os.getcwd(), "data", "order_book")
+        os.makedirs(self.save_dir, exist_ok=True)  # Create folder if it doesn't exist
+
+        if self.save_mode:
+            self.saving_thread = threading.Thread(target=self.periodic_save, daemon=True)
+            self.saving_thread.start()
 
         # Initialize logging control flags.
         self.logging_running = False
@@ -123,6 +137,8 @@ class OrderBookPublisher(Publisher):
     def publish_order_book(self, symbol, timeExchange, timeReceived, timePublished):
         """
         Publish the order book update for a given symbol with separate bid/ask price and size arrays.
+        Optionally save it to a parquet file.
+
 
         Args:
             symbol (str): The symbol to publish.
@@ -132,29 +148,55 @@ class OrderBookPublisher(Publisher):
         """
         order_book_instance = self.order_book[symbol]
 
-        # Extract bid and ask prices and sizes separately
-        bidPrices = list(order_book_instance.bids.keys())
-        bidSizes = list(order_book_instance.bids.values())
-        askPrices = list(order_book_instance.asks.keys())
-        askSizes = list(order_book_instance.asks.values())
-
         published_data = {
-            "bidPrices": bidPrices,
-            "bidSizes": bidSizes,
-            "askPrices": askPrices,
-            "askSizes": askSizes,
+            "exchange": self.exchange,
+            "symbol": symbol,
+            "bidPrices": list(order_book_instance.bids.keys()),
+            "bidSizes": list(order_book_instance.bids.values()),
+            "askPrices": list(order_book_instance.asks.keys()),
+            "askSizes": list(order_book_instance.asks.values()),
             "timeExchange": timeExchange,
             "timeReceived": timeReceived,
-            "timePublished": timePublished
+            "timePublished": timePublished,
         }
 
-        message = {
-            "topic": f"ORDERBOOK_{self.exchange}_{symbol}",
-            "data": {**published_data, "exchange": self.exchange, "symbol": symbol}
-        }
-
+        message = {"topic": f"ORDERBOOK_{self.exchange}_{symbol}", "data": published_data}
         self.publisher_thread.publish(message)
+
+        if self.save_mode:
+            self.data_buffer[symbol].append(published_data)
+
         logging.debug("%s: Enqueued order book update for symbol %s", self.exchange, symbol)
+
+    def periodic_save(self):
+        """
+        Save collected order book data to a parquet file every 15 minutes.
+        """
+        while True:
+            time.sleep(600)  # Wait 10 minutes
+            if self.save_mode:
+                self.save_to_parquet()
+
+    def save_to_parquet(self):
+        """
+        Saves buffered order book data to separate parquet files for each symbol.
+        """
+        end_time = datetime.datetime.now(datetime.timezone.utc)
+        start_time = self.last_save_time
+        self.last_save_time = end_time
+
+        for symbol, data in self.data_buffer.items():
+            if not data:
+                continue  # Skip if no data for the symbol
+
+            filename = f"orderbook_{self.exchange}_{symbol}_{start_time.strftime('%Y%m%d%H%M%S')}_{end_time.strftime('%Y%m%d%H%M%S')}.parquet"
+            file_path = os.path.join(self.save_dir, filename)  # Save in data/order_book/
+
+            df = pd.DataFrame(data)
+            df.to_parquet(file_path, index=False)
+
+            logging.info(f"Saved order book data for {symbol} to {file_path}")
+            self.data_buffer[symbol].clear()  # Clear buffer for the symbol
 
     def logging_loop(self):
         """
