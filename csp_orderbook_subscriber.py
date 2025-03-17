@@ -209,15 +209,14 @@ def my_graph():
         data = adapter_manager.subscribe(symbol, csp.PushMode.BURST)
         csp.print(symbol + " burst", data)
 
-        data = adapter_manager.subscribe(symbol, csp.PushMode.NON_COLLAPSING)
+        data = adapter_manager.subscribe(symbol, csp.PushMode.NON_COLLAPSING) # this will be used
         csp.print(symbol + " non_collapsing", data)
 
     print("End of graph building")
 
-
-def main():
+def run_my_graph():
     csp.run(my_graph, starttime=datetime.utcnow(), endtime=timedelta(seconds=5), realtime=True)
 
 
 if __name__ == "__main__":
-    main()
+    run_my_graph()
