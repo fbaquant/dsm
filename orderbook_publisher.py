@@ -170,28 +170,53 @@ class OrderBookPublisher(Publisher):
 
     def periodic_save(self):
         """
-        Save collected order book data to a parquet file every 15 minutes.
+        Save collected order book data immediately from `now` to the next scheduled 10-minute mark,
+        then continue saving every 10 minutes at X:00, X:10, X:20, X:30, X:40, X:50.
         """
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        # Determine the next save point (round up to the next X:00, X:10, X:20, etc.)
+        next_save_minute = (now.minute // 10 + 1) * 10 % 60
+        next_save_hour = now.hour + (1 if next_save_minute == 0 else 0)
+        next_save_time = now.replace(
+            minute=next_save_minute, second=0, microsecond=0, hour=next_save_hour % 24
+        )
+
+        # Set initial save window (from `now` to the next scheduled interval)
+        self.last_save_time = now
+        self.save_to_parquet()
+
         while True:
-            time.sleep(600)  # Wait 10 minutes
-            if self.save_mode:
-                self.save_to_parquet()
+            wait_time = (next_save_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+            if wait_time > 0:
+                time.sleep(wait_time)
+
+            # Update for the next cycle
+            self.last_save_time = next_save_time
+            self.save_to_parquet()
+
+            # Calculate the next scheduled save time
+            next_save_time += datetime.timedelta(minutes=10)
 
     def save_to_parquet(self):
         """
-        Saves buffered order book data to separate parquet files for each symbol.
+        Saves buffered order book data to separate Parquet files for each symbol.
+        The filename now includes both the start and end time.
         """
         end_time = datetime.datetime.now(datetime.timezone.utc)
-        start_time = self.last_save_time
-        self.last_save_time = end_time
 
         for symbol, data in self.data_buffer.items():
             if not data:
                 continue  # Skip if no data for the symbol
 
-            filename = f"orderbook_{self.exchange}_{symbol}_{start_time.strftime('%Y%m%d%H%M%S')}_{end_time.strftime('%Y%m%d%H%M%S')}.parquet"
-            file_path = os.path.join(self.save_dir, filename)  # Save in data/order_book/
+            # Determine the start time from the first entry in the buffer
+            start_time = datetime.datetime.fromisoformat(data[0]["timePublished"])
 
+            # Format the filename with start and end time
+            filename = f"orderbook_{self.exchange}_{symbol}_{start_time.strftime('%Y%m%d%H%M%S')}_{end_time.strftime('%Y%m%d%H%M%S')}.parquet"
+            file_path = os.path.join(self.save_dir, filename)
+
+            # Convert to DataFrame and save
             df = pd.DataFrame(data)
             df.to_parquet(file_path, index=False)
 
@@ -724,7 +749,7 @@ if __name__ == "__main__":
     # okx_thread.start()
 
     # Let the streamers run for a specified period (e.g., 60 seconds).
-    time.sleep(240)
+    time.sleep(60 * 12)
 
     # Cleanly stop both streamers.
     # coinbase_orderbook_publisher.end()
