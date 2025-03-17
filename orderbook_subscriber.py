@@ -48,9 +48,9 @@ class Subscriber:
                     logging.debug("Ignoring message with topic: %s", topic)
                     continue
 
-                if "bids" in data and "asks" in data:
-                    best_bid = data["bids"][0][0] if data.get("bids") and len(data["bids"]) > 0 else "N/A"
-                    best_ask = data["asks"][0][0] if data.get("asks") and len(data["asks"]) > 0 else "N/A"
+                if "bidPrices" in data and "askPrices" in data:
+                    best_bid = data["bidPrices"][0] if data.get("bidPrices") and len(data["bidPrices"]) > 0 else "N/A"
+                    best_ask = data["askPrices"][0] if data.get("askPrices") and len(data["askPrices"]) > 0 else "N/A"
                     # Extract the three timestamps from the published data.
                     timeExchange = data.get("timeExchange", "N/A")
                     timeReceived = data.get("timeReceived", "N/A")

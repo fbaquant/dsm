@@ -58,19 +58,23 @@ class Subscriber:
                     data = message.get("data", {})
                     logging.info("Received complete message from %s: %s", addr, topic)
 
-                    if "bids" in data and "asks" in data:
-                        best_bid = data["bids"][0][0] if data.get("bids") and len(data["bids"]) > 0 else "N/A"
-                        best_ask = data["asks"][0][0] if data.get("asks") and len(data["asks"]) > 0 else "N/A"
+                    if "bidPrices" in data and "askPrices" in data:
+                        best_bid = data["bidPrices"][0] if data.get("bidPrices") else "N/A"
+                        best_ask = data["askPrices"][0] if data.get("askPrices") else "N/A"
+                        best_bid_size = data["bidSizes"][0] if data.get("bidSizes") else "N/A"
+                        best_ask_size = data["askSizes"][0] if data.get("askSizes") else "N/A"
                         timeExchange = data.get("timeExchange", "N/A")
                         timeReceived = data.get("timeReceived", "N/A")
                         timePublished = data.get("timePublished", "N/A")
                         logging.info(
-                            "Order book received: Topic: %s, Exchange: %s, Symbol: %s, Best Bid: %s, Best Ask: %s, timeExchange: %s, timeReceived: %s, timePublished: %s",
+                            "Order book received: Topic: %s, Exchange: %s, Symbol: %s, Best Bid: %s (%s), Best Ask: %s (%s), timeExchange: %s, timeReceived: %s, timePublished: %s",
                             topic,
                             data.get("exchange", "Unknown"),
                             data.get("symbol", "Unknown"),
                             best_bid,
+                            best_bid_size,
                             best_ask,
+                            best_ask_size,
                             timeExchange,
                             timeReceived,
                             timePublished
@@ -110,7 +114,7 @@ class Subscriber:
 
 
 if __name__ == "__main__":
-    exchange = "coinbase"
+    exchange = "bybit"
     udp_port = EXCHANGE_CONFIG[exchange]["orderbook_port"]  # Replace with the actual UDP port
     subscriber = Subscriber(exchange, udp_port)
 

@@ -12,8 +12,10 @@ from csp.impl.wiring import py_push_adapter_def
 
 class MyData(csp.Struct):
     symbol: str
-    bids: list
-    asks: list
+    bid_prices: list
+    bid_sizes: list
+    ask_prices: list
+    ask_sizes: list
     time_exchange: str
     time_received: str
     time_published: str
@@ -118,42 +120,62 @@ class MyAdapterManagerImpl(AdapterManagerImpl):
             print(f"Skipping non-dictionary message: {msg}")
             return
 
-        # Extract and parse the inner 'data' field which is still a JSON string
-        try:
-            if isinstance(msg.get("data"), str):  # Check if 'data' is a string
-                parsed_data = json.loads(msg["data"])  # Deserialize again
-            else:
-                parsed_data = msg.get("data", {})
-        except json.JSONDecodeError:
-            print(f"Error decoding nested JSON from 'data': {msg.get('data')}")
+        # Extract and parse the inner 'data' field
+        raw_data = msg.get("data")
+        if isinstance(raw_data, str):
+            try:
+                parsed_data = json.loads(raw_data)  # Decode first level
+            except json.JSONDecodeError:
+                print(f"Error decoding JSON from 'data': {raw_data}")
+                return
+        else:
+            parsed_data = raw_data
+
+        if not isinstance(parsed_data, dict):
+            print(f"Invalid 'parsed_data' format (expected dict but got {type(parsed_data)}): {parsed_data}")
             return
 
-        # Now extract the actual order book data inside "parsed_data"
-        if not isinstance(parsed_data, dict) or "data" not in parsed_data:
-            print(f"Invalid 'parsed_data' format: {parsed_data}")
+        # Extract the actual order book data
+        if "data" in parsed_data and isinstance(parsed_data["data"], dict):
+            parsed_data = parsed_data["data"]  # Extract the nested data dictionary
+
+        # Ensure that parsed_data contains expected keys
+        required_keys = ["symbol", "bidPrices", "bidSizes", "askPrices", "askSizes", "timeExchange", "timeReceived",
+                         "timePublished"]
+        missing_keys = [key for key in required_keys if key not in parsed_data]
+        if missing_keys:
+            print(f"Missing expected keys {missing_keys} in parsed_data: {parsed_data}")
             return
 
-        order_book = parsed_data["data"]  # The actual order book JSON
-        if not isinstance(order_book, dict):
-            print(f"Invalid order book format: {order_book}")
-            return
+        # Extract necessary fields safely
+        symbol = parsed_data.get("symbol", "UNKNOWN")
+        bid_prices = parsed_data.get("bidPrices", [])
+        bid_sizes = parsed_data.get("bidSizes", [])
+        ask_prices = parsed_data.get("askPrices", [])
+        ask_sizes = parsed_data.get("askSizes", [])
+        time_exchange = parsed_data.get("timeExchange", "N/A")
+        time_received = parsed_data.get("timeReceived", "N/A")
+        time_published = parsed_data.get("timePublished", "N/A")
 
-        # Extract necessary fields
-        symbol = order_book.get("symbol")
-        bids = order_book.get("bids", [])
-        asks = order_book.get("asks", [])
-        time_exchange = order_book.get("timeExchange", "N/A")
-        time_received = order_book.get("timeReceived", "N/A")
-        time_published = order_book.get("timePublished", "N/A")
+        # Ensure bid and ask lists are aligned
+        if len(bid_prices) != len(bid_sizes):
+            print(f"Mismatched bid price and size lengths: {len(bid_prices)} prices, {len(bid_sizes)} sizes")
+            return
+        if len(ask_prices) != len(ask_sizes):
+            print(f"Mismatched ask price and size lengths: {len(ask_prices)} prices, {len(ask_sizes)} sizes")
+            return
 
         print(
-            f"Processed Order Book: Symbol={symbol}, Best Bid={bids[:2]}, Best Ask={asks[:2]}, TimeExchange={time_exchange}")
+            f"Processed Order Book: Symbol={symbol}, Best Bid={bid_prices[:2]}, Best Ask={ask_prices[:2]}, TimeExchange={time_exchange}"
+        )
 
         if symbol in self._inputs:
             my_data = MyData(
                 symbol=symbol,
-                bids=bids,
-                asks=asks,
+                bid_prices=bid_prices,
+                bid_sizes=bid_sizes,
+                ask_prices=ask_prices,
+                ask_sizes=ask_sizes,
                 time_exchange=time_exchange,
                 time_received=time_received,
                 time_published=time_published
