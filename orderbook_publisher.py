@@ -168,35 +168,34 @@ class OrderBookPublisher(Publisher):
 
         logging.debug("%s: Enqueued order book update for symbol %s", self.exchange, symbol)
 
-    def periodic_save(self):
+    def get_next_save_time(self):
         """
-        Save collected order book data immediately from `now` to the next scheduled 10-minute mark,
-        then continue saving every 10 minutes at X:00, X:10, X:20, X:30, X:40, X:50.
+        Determine the next save time, rounding up to the next X:00, X:10, X:20, X:30, X:40, or X:50.
         """
         now = datetime.datetime.now(datetime.timezone.utc)
-
-        # Determine the next save point (round up to the next X:00, X:10, X:20, etc.)
         next_save_minute = (now.minute // 10 + 1) * 10 % 60
         next_save_hour = now.hour + (1 if next_save_minute == 0 else 0)
+
         next_save_time = now.replace(
             minute=next_save_minute, second=0, microsecond=0, hour=next_save_hour % 24
         )
+        return next_save_time
 
-        # Set initial save window (from `now` to the next scheduled interval)
-        self.last_save_time = now
-        self.save_to_parquet()
+    def periodic_save(self):
+        """
+        Waits until the next save point (X:00, X:10, X:20, etc.), then saves periodically.
+        """
+        next_save_time = self.get_next_save_time()
+
+        # Sleep until the next save point
+        wait_time = (next_save_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+        time.sleep(wait_time)
 
         while True:
-            wait_time = (next_save_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
-            if wait_time > 0:
-                time.sleep(wait_time)
-
-            # Update for the next cycle
-            self.last_save_time = next_save_time
             self.save_to_parquet()
-
-            # Calculate the next scheduled save time
             next_save_time += datetime.timedelta(minutes=10)
+            wait_time = (next_save_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+            time.sleep(wait_time)
 
     def save_to_parquet(self):
         """
@@ -213,7 +212,7 @@ class OrderBookPublisher(Publisher):
             start_time = datetime.datetime.fromisoformat(data[0]["timePublished"])
 
             # Format the filename with start and end time
-            filename = f"orderbook_{self.exchange}_{symbol}_{start_time.strftime('%Y%m%d%H%M%S')}_{end_time.strftime('%Y%m%d%H%M%S')}.parquet"
+            filename = f"orderbook_{self.exchange}_{symbol}_{start_time.strftime('%Y%m%d%H%M')}_{end_time.strftime('%Y%m%d%H%M')}.parquet"
             file_path = os.path.join(self.save_dir, filename)
 
             # Convert to DataFrame and save
@@ -749,7 +748,7 @@ if __name__ == "__main__":
     # okx_thread.start()
 
     # Let the streamers run for a specified period (e.g., 60 seconds).
-    time.sleep(60 * 12)
+    time.sleep(60 * 15)
 
     # Cleanly stop both streamers.
     # coinbase_orderbook_publisher.end()
