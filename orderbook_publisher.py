@@ -37,7 +37,6 @@ try:
         """Serialize an object to a JSON formatted str using orjson."""
         return json_parser.dumps(obj).decode("utf-8")
 
-
     loads = json_parser.loads
 except ImportError:
     import json as json_parser
@@ -123,7 +122,7 @@ class OrderBookPublisher(Publisher):
 
     def publish_order_book(self, symbol, timeExchange, timeReceived, timePublished):
         """
-        Publish the Bybit order book update for a given symbol.
+        Publish the order book update for a given symbol with separate bid/ask price and size arrays.
 
         Args:
             symbol (str): The symbol to publish.
@@ -132,17 +131,28 @@ class OrderBookPublisher(Publisher):
             timePublished (str): Published timestamp.
         """
         order_book_instance = self.order_book[symbol]
+
+        # Extract bid and ask prices and sizes separately
+        bidPrices = list(order_book_instance.bids.keys())
+        bidSizes = list(order_book_instance.bids.values())
+        askPrices = list(order_book_instance.asks.keys())
+        askSizes = list(order_book_instance.asks.values())
+
         published_data = {
-            "bids": list(order_book_instance.bids.items()),
-            "asks": list(order_book_instance.asks.items()),
+            "bidPrices": bidPrices,
+            "bidSizes": bidSizes,
+            "askPrices": askPrices,
+            "askSizes": askSizes,
             "timeExchange": timeExchange,
             "timeReceived": timeReceived,
             "timePublished": timePublished
         }
+
         message = {
             "topic": f"ORDERBOOK_{self.exchange}_{symbol}",
             "data": {**published_data, "exchange": self.exchange, "symbol": symbol}
         }
+
         self.publisher_thread.publish(message)
         logging.debug("%s: Enqueued order book update for symbol %s", self.exchange, symbol)
 
