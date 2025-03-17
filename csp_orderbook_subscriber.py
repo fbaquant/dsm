@@ -93,7 +93,7 @@ class MyAdapterManagerImpl(AdapterManagerImpl):
                 decoded_message = message.decode("utf-8")
 
                 # Debugging: Print received raw message
-                print(f"Received raw message: {decoded_message}")
+                # print(f"Received raw message: {decoded_message}")
 
                 # Attempt to parse JSON
                 try:
@@ -103,7 +103,7 @@ class MyAdapterManagerImpl(AdapterManagerImpl):
                     continue  # Skip processing if message is not valid JSON
 
                 # Debugging: Print parsed message
-                print(f"Parsed JSON message: {json_msg}")
+                # print(f"Parsed JSON message: {json_msg}")
 
                 # Ensure the parsed message is actually a dictionary
                 if isinstance(json_msg, dict):
@@ -120,11 +120,10 @@ class MyAdapterManagerImpl(AdapterManagerImpl):
             print(f"Skipping non-dictionary message: {msg}")
             return
 
-        # Extract and parse the inner 'data' field
         raw_data = msg.get("data")
         if isinstance(raw_data, str):
             try:
-                parsed_data = json.loads(raw_data)  # Decode first level
+                parsed_data = json.loads(raw_data)
             except json.JSONDecodeError:
                 print(f"Error decoding JSON from 'data': {raw_data}")
                 return
@@ -135,11 +134,9 @@ class MyAdapterManagerImpl(AdapterManagerImpl):
             print(f"Invalid 'parsed_data' format (expected dict but got {type(parsed_data)}): {parsed_data}")
             return
 
-        # Extract the actual order book data
         if "data" in parsed_data and isinstance(parsed_data["data"], dict):
-            parsed_data = parsed_data["data"]  # Extract the nested data dictionary
+            parsed_data = parsed_data["data"]
 
-        # Ensure that parsed_data contains expected keys
         required_keys = ["symbol", "bidPrices", "bidSizes", "askPrices", "askSizes", "timeExchange", "timeReceived",
                          "timePublished"]
         missing_keys = [key for key in required_keys if key not in parsed_data]
@@ -147,8 +144,13 @@ class MyAdapterManagerImpl(AdapterManagerImpl):
             print(f"Missing expected keys {missing_keys} in parsed_data: {parsed_data}")
             return
 
-        # Extract necessary fields safely
         symbol = parsed_data.get("symbol", "UNKNOWN")
+
+        # **NEW: Ignore messages for symbols that are not subscribed**
+        if symbol not in self._inputs:
+            # print(f"Skipping symbol {symbol} as it is not subscribed.")
+            return
+
         bid_prices = parsed_data.get("bidPrices", [])
         bid_sizes = parsed_data.get("bidSizes", [])
         ask_prices = parsed_data.get("askPrices", [])
@@ -157,7 +159,6 @@ class MyAdapterManagerImpl(AdapterManagerImpl):
         time_received = parsed_data.get("timeReceived", "N/A")
         time_published = parsed_data.get("timePublished", "N/A")
 
-        # Ensure bid and ask lists are aligned
         if len(bid_prices) != len(bid_sizes):
             print(f"Mismatched bid price and size lengths: {len(bid_prices)} prices, {len(bid_sizes)} sizes")
             return
@@ -169,19 +170,19 @@ class MyAdapterManagerImpl(AdapterManagerImpl):
             f"Processed Order Book: Symbol={symbol}, Best Bid={bid_prices[:2]}, Best Ask={ask_prices[:2]}, TimeExchange={time_exchange}"
         )
 
-        if symbol in self._inputs:
-            my_data = MyData(
-                symbol=symbol,
-                bid_prices=bid_prices,
-                bid_sizes=bid_sizes,
-                ask_prices=ask_prices,
-                ask_sizes=ask_sizes,
-                time_exchange=time_exchange,
-                time_received=time_received,
-                time_published=time_published
-            )
-            for adapter in self._inputs[symbol]:
-                adapter.push_tick(my_data)
+        my_data = MyData(
+            symbol=symbol,
+            bid_prices=bid_prices,
+            bid_sizes=bid_sizes,
+            ask_prices=ask_prices,
+            ask_sizes=ask_sizes,
+            time_exchange=time_exchange,
+            time_received=time_received,
+            time_published=time_published
+        )
+
+        for adapter in self._inputs[symbol]:
+            adapter.push_tick(my_data)
 
 
 class MyPushAdapterImpl(PushInputAdapter):
@@ -199,7 +200,7 @@ def my_graph():
     print("Start of graph building")
 
     adapter_manager = MyAdapterManager(timedelta(seconds=0.75), udp_port=5566)
-    symbols = ["BTCUSDT", "ETHUSDT"]
+    symbols = ["BTCUSDT"]
 
     for symbol in symbols:
         data = adapter_manager.subscribe(symbol, csp.PushMode.LAST_VALUE)
