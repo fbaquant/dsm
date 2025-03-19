@@ -1,0 +1,6 @@
+orjson
+pandas
+pyarrow
+sortedcontainers
+websocket-client
+zmq
