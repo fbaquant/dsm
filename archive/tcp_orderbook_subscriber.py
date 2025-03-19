@@ -104,7 +104,7 @@ class Subscriber:
 
 
 if __name__ == "__main__":
-    exchange = "okx"
+    exchange = "bybit"
     subscriber = Subscriber(
         exchange=EXCHANGE_CONFIG[exchange]["exchange"],
         zmq_port=EXCHANGE_CONFIG[exchange]["orderbook_port"]
