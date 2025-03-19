@@ -22,6 +22,8 @@ import logging
 import os
 import threading
 import time
+from copy import deepcopy
+from queue import Queue
 
 import jwt
 import pandas as pd
@@ -108,16 +110,27 @@ class OrderBookPublisher(Publisher):
         self.order_book = {symbol: OrderBook() for symbol in symbols}
 
         self.save_mode = save_mode
-        self.last_save_time = datetime.datetime.now(datetime.timezone.utc)
-        self.data_buffer = {symbol: [] for symbol in symbols}  # Buffer for each symbol
+        self.symbols = symbols
+        self.order_book = {symbol: OrderBook() for symbol in symbols}
 
-        # Define save directory
-        self.save_dir = os.path.join(os.getcwd(), "data", "order_book")
-        os.makedirs(self.save_dir, exist_ok=True)  # Create folder if it doesn't exist
-
+        self.save_mode = save_mode
         if self.save_mode:
-            self.saving_thread = threading.Thread(target=self.periodic_save, daemon=True)
+            self.data_buffer = {symbol: [] for symbol in symbols}
+            self.tmp_data_buffer = {symbol: [] for symbol in symbols}
+            self.data_snpshot = {}
+            self.saving_flag = False
+            self.save_q = Queue()
+
+            self.save_dir = os.path.join(os.getcwd(), "data", "order_book")
+            os.makedirs(self.save_dir, exist_ok=True)
+
+            self.lock = threading.Lock()
+            self.saving_thread = threading.Thread(
+                target=self.periodic_save, daemon=True
+            )
             self.saving_thread.start()
+
+            self.save_time = self.get_next_save_time()
 
         # Initialize logging control flags.
         self.logging_running = False
@@ -164,63 +177,66 @@ class OrderBookPublisher(Publisher):
         self.publisher_thread.publish(message)
 
         if self.save_mode:
-            self.data_buffer[symbol].append(published_data)
+            time_exchange = datetime.datetime.strptime(
+                timeExchange[:26], '%Y-%m-%dT%H:%M:%S.%f'
+            )
+            if time_exchange > self.save_time:
+                self.saving_flag = True
+
+                save_time = self.save_time
+                save_time = save_time.strftime('%Y%m%d%H%M')
+                self.save_time = self.get_next_save_time()
+
+                self.save_q.put(save_time)
+
+            if self.saving_flag:
+                self.tmp_data_buffer[symbol].append(published_data)
+            else:
+                self.data_buffer[symbol].append(published_data)
 
         logging.debug("%s: Enqueued order book update for symbol %s", self.exchange, symbol)
 
-    def get_next_save_time(self):
-        """
-        Determine the next save time, rounding up to the next X:00, X:10, X:20, X:30, X:40, or X:50.
-        """
-        now = datetime.datetime.now(datetime.timezone.utc)
-        next_save_minute = (now.minute // 10 + 1) * 10 % 60
-        next_save_hour = now.hour + (1 if next_save_minute == 0 else 0)
-
-        next_save_time = now.replace(
-            minute=next_save_minute, second=0, microsecond=0, hour=next_save_hour % 24
-        )
-        return next_save_time
-
     def periodic_save(self):
-        """
-        Waits until the next save point (X:00, X:10, X:20, etc.), then saves periodically.
-        """
-        next_save_time = self.get_next_save_time()
-
-        # Sleep until the next save point
-        wait_time = (next_save_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
-        time.sleep(wait_time)
-
+        prev_save_time = datetime.datetime.now().strftime('%Y%m%d%H%M')
         while True:
-            self.save_to_parquet()
-            next_save_time += datetime.timedelta(minutes=10)
-            wait_time = (next_save_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
-            time.sleep(wait_time)
+            save_time = self.save_q.get()
+            self.save_to_parquet(prev_save_time, save_time)
+            prev_save_time = save_time
 
-    def save_to_parquet(self):
-        """
-        Saves buffered order book data to separate Parquet files for each symbol.
-        The filename now includes both the start and end time.
-        """
-        end_time = datetime.datetime.now(datetime.timezone.utc)
-
-        for symbol, data in self.data_buffer.items():
+    def save_to_parquet(self, prev_save_time, save_time):
+        self.data_snpshot = deepcopy(self.data_buffer)
+        for symbol, data in self.data_snpshot.items():
             if not data:
-                continue  # Skip if no data for the symbol
+                continue
+            topic = f"orderbook_{self.exchange}_{symbol}"
+            file_name = f'{topic}_{prev_save_time}_{save_time}.parquet'
+            file_path = os.path.join(self.save_dir, file_name)
 
-            # Determine the start time from the first entry in the buffer
-            start_time = datetime.datetime.fromisoformat(data[0]["timePublished"])
-
-            # Format the filename with start and end time
-            filename = f"orderbook_{self.exchange}_{symbol}_{start_time.strftime('%Y%m%d%H%M')}_{end_time.strftime('%Y%m%d%H%M')}.parquet"
-            file_path = os.path.join(self.save_dir, filename)
-
-            # Convert to DataFrame and save
             df = pd.DataFrame(data)
             df.to_parquet(file_path, index=False)
+            logging.info(f"SAVE: {self.exchange}: {symbol}: {file_name}")
 
-            logging.info(f"Saved order book data for {symbol} to {file_path}")
-            self.data_buffer[symbol].clear()  # Clear buffer for the symbol
+        with self.lock:
+            self.data_buffer = self.tmp_data_buffer
+            self.saving_flag = False
+        self.tmp_data_buffer = {symbol: [] for symbol in self.symbols}
+
+    @staticmethod
+    def get_next_save_time():
+        now = datetime.datetime.now(datetime.timezone.utc)
+        save_hour = now.hour
+        save_minute = (now.minute // 10 + 1) * 10
+        shift_day = 0
+        if save_minute == 60:
+            save_hour += 1
+            save_minute = 0
+            if save_hour == 24:
+                shift_day = 1
+                save_hour = 0
+        next_save_time = now.replace(
+            hour=save_hour, minute=save_minute, second=0, microsecond=0
+        ).replace(tzinfo=None)
+        return next_save_time + datetime.timedelta(shift_day)
 
     def logging_loop(self):
         """
