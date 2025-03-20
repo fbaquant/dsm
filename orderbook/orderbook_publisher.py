@@ -29,7 +29,7 @@ import jwt
 import pandas as pd
 from sortedcontainers import SortedDict  # Maintain order book in sorted order
 
-from core.udp_publisher import Publisher  # Base publisher for ZeroMQ publishing
+from core.fast_publisher import Publisher  # Base publisher for ZeroMQ publishing
 
 # Try to use orjson for faster JSON processing. Fallback to standard json if unavailable.
 try:
@@ -669,7 +669,7 @@ class BybitOrderBookPublisher(OrderBookPublisher):
             logging.debug("%s: No data in message; skipping", self.exchange)
             return
 
-        symbol = data.get("data", {}).get("s", "")
+        symbol = data.get("../data", {}).get("s", "")
         if not symbol or symbol not in self.order_book:
             logging.debug("%s: Symbol %s not in subscription list; skipping", self.exchange, symbol)
             return
@@ -764,7 +764,7 @@ if __name__ == "__main__":
     # okx_thread.start()
 
     # Let the streamers run for a specified period (e.g., 60 seconds).
-    time.sleep(60 * 15)
+    time.sleep(12 * 60)
 
     # Cleanly stop both streamers.
     # coinbase_orderbook_publisher.end()

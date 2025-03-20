@@ -11,7 +11,7 @@ import time
 import jwt
 
 from config import EXCHANGE_CONFIG
-from core.publisher import Publisher
+from archive.tcp_publisher import Publisher
 
 
 # =============================================================================

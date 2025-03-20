@@ -2,13 +2,12 @@ import abc
 import json
 import logging
 import queue
+import socket
 import threading
 import time
 import uuid
-import zlib
 
 import websocket
-import socket
 
 # Configure logging.
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -16,29 +15,11 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=lo
 
 class Publisher(abc.ABC):
     """
-    Abstract base class for a data publisher that streams WebSocket data and publishes it over ZeroMQ.
-
-    Attributes:
-        ws_url (str): The WebSocket URL endpoint.
-        api_key (str): API key for authentication.
-        secret_key (str): Secret key for authentication.
-        symbols (list): List of symbols to subscribe to.
-        exchange (str): Prefix for message topics.
-        zmq_port (int): The port number for ZeroMQ publisher binding.
+    Abstract base class for a data and publisher that streams messages
+    via WebSocket and broadcasts them via UDP.
     """
 
     def __init__(self, ws_url, api_key, secret_key, symbols, exchange, udp_port):
-        """
-        Initialize the Publisher with WebSocket and ZeroMQ configurations.
-
-        Args:
-            ws_url (str): WebSocket endpoint URL.
-            api_key (str): API key for authentication.
-            secret_key (str): Secret key for authentication.
-            symbols (list): List of symbols to subscribe to.
-            exchange (str): exchange for topic names.
-            zmq_port (int): Port number for the ZeroMQ publisher.
-        """
         self.ws_url = ws_url
         self.api_key = api_key
         self.secret_key = secret_key
@@ -52,7 +33,7 @@ class Publisher(abc.ABC):
         self.udp_target = ("255.255.255.255", self.udp_port)  # Broadcast on local network
         self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-        logging.info("%s: UDP publisher broadcasting on port %s", self.__class__.__name__, self.udp_port)
+        logging.info("%s broadcasting on port %s", self.__class__.__name__, self.udp_port)
 
         # Start the publisher thread.
         self.publisher_thread = PublisherThread(self.udp_socket, self.udp_target)
@@ -132,9 +113,6 @@ class Publisher(abc.ABC):
                 self.end()
 
     def end(self):
-        """
-        Cleanly stop the publisher, including the WebSocket, logging loop, and ZeroMQ publisher.
-        """
         logging.info("Stopping %s publisher...", self.__class__.__name__)
         self.stop_logging()
         if self.ws_app is not None:
@@ -148,7 +126,7 @@ class Publisher(abc.ABC):
 
     def start_logging(self):
         """
-        Start the logging thread that runs the custom _logging_loop.
+        Start the logging thread that runs the custom logging_loop.
         """
         self.logging_running = True
         self.logging_thread = threading.Thread(target=self.logging_loop)
@@ -165,68 +143,53 @@ class Publisher(abc.ABC):
 
 
 class PublisherThread(threading.Thread):
-    """
-    Thread class for handling message publishing via ZeroMQ in the background.
-
-    Attributes:
-        publisher (zmq.Socket): The ZeroMQ publisher socket.
-        queue (queue.Queue): Queue to hold messages to be published.
-        running (bool): Flag to control the thread's running state.
-    """
 
     def __init__(self, udp_socket, udp_target):
-        """
-        Initialize the PublisherThread with the ZeroMQ publisher socket.
-
-        Args:
-            publisher (zmq.Socket): The ZeroMQ publisher socket.
-        """
         super().__init__()
         self.udp_socket = udp_socket
         self.udp_target = udp_target
-        self.queue = queue.Queue()
-        self.daemon = True  # Ensure thread terminates when main program exits.
+        self.queue = queue.Queue()  # ✅ Restoring to Queue() for thread safety
+        self.daemon = True
         self.running = True
         self.chunk_size = 4000  # Safe UDP chunk size (~4 KB)
 
     def run(self):
         while self.running:
             try:
-                msg = self.queue.get(timeout=0.05)
-                json_msg = json.dumps(msg).encode("utf-8")  # Convert message to JSON
-                message_id = str(uuid.uuid4())  # Generate unique ID for message chunks
+                msg = self.queue.get(timeout=0.05)  # ✅ Restoring timeout (avoids busy loop)
+                json_msg = json.dumps(msg).encode("utf-8")
+                message_id = str(uuid.uuid4())
 
                 # Split message into chunks
                 chunks = [json_msg[i:i + self.chunk_size] for i in range(0, len(json_msg), self.chunk_size)]
                 num_chunks = len(chunks)
 
                 if num_chunks > 1:
-                    logging.debug(f"Splitting message into {num_chunks} chunks: {msg.get('topic')}")
+                    print(f"🔹 [DEBUG] Splitting message into {num_chunks} chunks: {msg.get('topic')}")
 
-                # Send each chunk with a sequence number
                 for i, chunk in enumerate(chunks):
                     chunk_metadata = json.dumps({
-                        "id": message_id,  # Unique message ID
-                        "seq": i,  # Sequence number
-                        "total": num_chunks,  # Total chunks
-                        "data": chunk.decode("utf-8")  # Send chunk data as string
+                        "id": message_id,
+                        "seq": i,
+                        "total": num_chunks,
+                        "data": chunk.decode("utf-8")
                     }).encode("utf-8")
 
                     self.udp_socket.sendto(chunk_metadata, self.udp_target)
 
-                self.queue.task_done()
-                logging.debug("Published chunked message: %s", msg.get("topic"))
+                self.queue.task_done()  # ✅ Ensures messages are fully processed
+
             except queue.Empty:
-                continue
+                continue  # ✅ Avoid excessive CPU usage while keeping low latency
 
     def publish(self, msg):
         """
         Add a message to the publishing queue.
 
         Args:
-            msg (dict): The message to be published. Expected to be JSON-serializable.
+            msg (dict): The message to be published.
         """
-        self.queue.put(msg)
+        self.queue.put(msg)  # ✅ Blocking queue prevents data loss
 
     def stop(self):
         """
