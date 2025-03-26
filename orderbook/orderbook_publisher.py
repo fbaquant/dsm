@@ -29,7 +29,7 @@ import jwt
 import pandas as pd
 from sortedcontainers import SortedDict  # Maintain order book in sorted order
 
-from core.fast_publisher import Publisher  # Base publisher for ZeroMQ publishing
+from core.publisher import Publisher  # Base publisher for ZeroMQ publishing
 
 # Try to use orjson for faster JSON processing. Fallback to standard json if unavailable.
 try:

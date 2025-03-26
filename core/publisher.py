@@ -18,6 +18,7 @@ class Publisher(abc.ABC):
     Abstract base class for a data and publisher that streams messages
     via WebSocket and broadcasts them via UDP.
     """
+
     def __init__(self, ws_url, api_key, secret_key, symbols, exchange, udp_port):
         self.ws_url = ws_url
         self.api_key = api_key
@@ -147,49 +148,48 @@ class PublisherThread(threading.Thread):
         super().__init__()
         self.udp_socket = udp_socket
         self.udp_target = udp_target
-        self.queue = queue.Queue()
-        self.daemon = True  # Ensure thread terminates when main program exits.
+        self.queue = queue.Queue()  # ✅ Restoring to Queue() for thread safety
+        self.daemon = True
         self.running = True
         self.chunk_size = 4000  # Safe UDP chunk size (~4 KB)
 
     def run(self):
         while self.running:
             try:
-                msg = self.queue.get(timeout=0.05)
-                json_msg = json.dumps(msg).encode("utf-8")  # Convert message to JSON
-                message_id = str(uuid.uuid4())  # Generate unique ID for message chunks
+                msg = self.queue.get(timeout=0.05)  # ✅ Restoring timeout (avoids busy loop)
+                json_msg = json.dumps(msg).encode("utf-8")
+                message_id = str(uuid.uuid4())
 
                 # Split message into chunks
                 chunks = [json_msg[i:i + self.chunk_size] for i in range(0, len(json_msg), self.chunk_size)]
                 num_chunks = len(chunks)
 
                 if num_chunks > 1:
-                    logging.debug(f"Splitting message into {num_chunks} chunks: {msg.get('topic')}")
+                    print(f"🔹 [DEBUG] Splitting message into {num_chunks} chunks: {msg.get('topic')}")
 
-                # Send each chunk with a sequence number
                 for i, chunk in enumerate(chunks):
                     chunk_metadata = json.dumps({
-                        "id": message_id,  # Unique message ID
-                        "seq": i,  # Sequence number
-                        "total": num_chunks,  # Total chunks
-                        "data": chunk.decode("utf-8")  # Send chunk data as string
+                        "id": message_id,
+                        "seq": i,
+                        "total": num_chunks,
+                        "data": chunk.decode("utf-8")
                     }).encode("utf-8")
 
                     self.udp_socket.sendto(chunk_metadata, self.udp_target)
 
-                self.queue.task_done()
-                logging.debug("Published chunked message: %s", msg.get("topic"))
+                self.queue.task_done()  # ✅ Ensures messages are fully processed
+
             except queue.Empty:
-                continue
+                continue  # ✅ Avoid excessive CPU usage while keeping low latency
 
     def publish(self, msg):
         """
         Add a message to the publishing queue.
 
         Args:
-            msg (dict): The message to be published. Expected to be JSON-serializable.
+            msg (dict): The message to be published.
         """
-        self.queue.put(msg)
+        self.queue.put(msg)  # ✅ Blocking queue prevents data loss
 
     def stop(self):
         """
