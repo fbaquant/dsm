@@ -1,1 +1,1 @@
-Market Data Stream
+Data Stream Manager
